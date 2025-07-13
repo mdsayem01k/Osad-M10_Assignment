@@ -1,19 +1,19 @@
 -- =====================================================
 -- Module 9 Assignment: Employee Management System
--- Northwind Database Implementation
+-- Northwind Database Implementation - FIXED VERSION
 -- =====================================================
 
 -- First, create an audit log table to track employee changes
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeAuditLog' AND xtype='U')
 BEGIN
     CREATE TABLE EmployeeAuditLog (
-        AuditID INT IDENTITY(1,1) PRIMARY KEY,
-        EmployeeID INT,
-        Operation VARCHAR(10),
-        OldData NVARCHAR(MAX),
-        NewData NVARCHAR(MAX),
-        ChangedBy NVARCHAR(100),
-        ChangeDate DATETIME
+        AuditID INT IDENTITY(1,1) PRIMARY KEY
+        ,EmployeeID INT
+        ,Operation VARCHAR(10)
+        ,OldData NVARCHAR(MAX)
+        ,NewData NVARCHAR(MAX)
+        ,ChangedBy NVARCHAR(100)
+        ,ChangeDate DATETIME
     );
     PRINT 'EmployeeAuditLog table created successfully';
 END
@@ -21,29 +21,29 @@ GO
 
 -- =====================================================
 -- 1. STORED PROCEDURE: Create Employee with Region and Territory
--- Following the pattern from your class examples
+-- FIXED: Changed @@IDENTITY to SCOPE_IDENTITY()
 -- =====================================================
 
 CREATE OR ALTER PROCEDURE CreateEmployeeInRegionTerritory
 (
-    @FirstName NVARCHAR(10),
-    @LastName NVARCHAR(20),
-    @Title NVARCHAR(30) = NULL,
-    @TitleOfCourtesy NVARCHAR(25) = NULL,
-    @BirthDate DATETIME = NULL,
-    @HireDate DATETIME = NULL,
-    @Address NVARCHAR(60) = NULL,
-    @City NVARCHAR(15) = NULL,
-    @Region NVARCHAR(15),
-    @PostalCode NVARCHAR(10) = NULL,
-    @Country NVARCHAR(15) = NULL,
-    @HomePhone NVARCHAR(24) = NULL,
-    @Extension NVARCHAR(4) = NULL,
-    @Notes NTEXT = NULL,
-    @ReportsTo INT = NULL,
-    @PhotoPath NVARCHAR(255) = NULL,
-    @TerritoryID NVARCHAR(20),
-    @NewEmployeeID INT OUT
+    @FirstName NVARCHAR(10)
+    ,@LastName NVARCHAR(20)
+    ,@Title NVARCHAR(30) = NULL
+    ,@TitleOfCourtesy NVARCHAR(25) = NULL
+    ,@BirthDate DATETIME = NULL
+    ,@HireDate DATETIME = NULL
+    ,@Address NVARCHAR(60) = NULL
+    ,@City NVARCHAR(15) = NULL
+    ,@Region NVARCHAR(15)
+    ,@PostalCode NVARCHAR(10) = NULL
+    ,@Country NVARCHAR(15) = NULL
+    ,@HomePhone NVARCHAR(24) = NULL
+    ,@Extension NVARCHAR(4) = NULL
+    ,@Notes NTEXT = NULL
+    ,@ReportsTo INT = NULL
+    ,@PhotoPath NVARCHAR(255) = NULL
+    ,@TerritoryID NVARCHAR(20)
+    ,@NewEmployeeID INT OUT
 )
 AS
 BEGIN
@@ -94,8 +94,8 @@ BEGIN TRANSACTION
         @HomePhone, @Extension, @Notes, @ReportsTo, @PhotoPath
     )
 
-    -- Get the newly created employee ID
-    SELECT @EmployeeID = @@IDENTITY
+    -- FIXED: Get the newly created employee ID using SCOPE_IDENTITY()
+    SELECT @EmployeeID = SCOPE_IDENTITY()
 
     -- Assign employee to territory
     INSERT INTO EmployeeTerritories (EmployeeID, TerritoryID)
@@ -129,12 +129,13 @@ END CATCH
 END
 GO
 
+
 -- =====================================================
 -- 2. TRIGGERS: Handle INSERT/UPDATE/DELETE on Employee Table
--- Following the trigger patterns from your class examples
+-- FIXED: Added proper handling for multiple rows in triggers
 -- =====================================================
 
--- TRIGGER 1: Handle INSERT operations
+-- TRIGGER 1: Handle INSERT operations - FIXED for multiple rows
 CREATE OR ALTER TRIGGER TR_INS_Employee 
 ON Employees
 AFTER INSERT
@@ -143,32 +144,31 @@ AS
 BEGIN
     SET NOCOUNT ON
     
-    DECLARE @EmployeeID INT,
-            @NewData NVARCHAR(MAX)
-    
-    SELECT @EmployeeID = EmployeeID FROM inserted
-    
-    -- Build new data string
-    SELECT @NewData = 'ID: ' + CAST(EmployeeID AS VARCHAR(10)) + 
-                     ' | Name: ' + FirstName + ' ' + LastName +
-                     ' | Title: ' + ISNULL(Title, 'NULL') +
-                     ' | Region: ' + ISNULL(Region, 'NULL') +
-                     ' | HireDate: ' + CONVERT(VARCHAR(20), HireDate, 120) +
-                     ' | ReportsTo: ' + ISNULL(CAST(ReportsTo AS VARCHAR(10)), 'NULL')
-    FROM inserted
-    
-    -- Insert audit log
+    -- FIXED: Handle multiple rows using cursor or INSERT...SELECT
     INSERT INTO EmployeeAuditLog 
     (EmployeeID, Operation, OldData, NewData, ChangedBy, ChangeDate)
-    VALUES 
-    (@EmployeeID, 'INSERT', NULL, @NewData, SYSTEM_USER, GETDATE())
+    SELECT 
+        EmployeeID,
+        'INSERT',
+        NULL,
+        'ID: ' + CAST(EmployeeID AS VARCHAR(10)) + 
+        ' | Name: ' + FirstName + ' ' + LastName +
+        ' | Title: ' + ISNULL(Title, 'NULL') +
+        ' | Region: ' + ISNULL(Region, 'NULL') +
+        ' | HireDate: ' + CONVERT(VARCHAR(20), HireDate, 120) +
+        ' | ReportsTo: ' + ISNULL(CAST(ReportsTo AS VARCHAR(10)), 'NULL'),
+        SYSTEM_USER,
+        GETDATE()
+    FROM inserted
     
-    PRINT 'TRIGGER FIRED: Employee INSERT - ID: ' + CAST(@EmployeeID AS VARCHAR(10))
-    PRINT 'Audit log entry created for INSERT operation'
+    -- Print message for each inserted row
+    DECLARE @Count INT = (SELECT COUNT(*) FROM inserted)
+    PRINT 'TRIGGER FIRED: Employee INSERT - ' + CAST(@Count AS VARCHAR(10)) + ' row(s) processed'
+    PRINT 'Audit log entries created for INSERT operation'
 END
 GO
 
--- TRIGGER 2: Handle UPDATE operations
+-- TRIGGER 2: Handle UPDATE operations - FIXED for multiple rows
 CREATE OR ALTER TRIGGER TR_UPD_Employee 
 ON Employees
 AFTER UPDATE
@@ -177,42 +177,38 @@ AS
 BEGIN
     SET NOCOUNT ON
     
-    DECLARE @EmployeeID INT,
-            @OldData NVARCHAR(MAX),
-            @NewData NVARCHAR(MAX)
-    
-    SELECT @EmployeeID = EmployeeID FROM inserted
-    
-    -- Build old data string from deleted table
-    SELECT @OldData = 'ID: ' + CAST(EmployeeID AS VARCHAR(10)) + 
-                     ' | Name: ' + FirstName + ' ' + LastName +
-                     ' | Title: ' + ISNULL(Title, 'NULL') +
-                     ' | Region: ' + ISNULL(Region, 'NULL') +
-                     ' | HireDate: ' + CONVERT(VARCHAR(20), HireDate, 120) +
-                     ' | ReportsTo: ' + ISNULL(CAST(ReportsTo AS VARCHAR(10)), 'NULL')
-    FROM deleted
-    
-    -- Build new data string from inserted table
-    SELECT @NewData = 'ID: ' + CAST(EmployeeID AS VARCHAR(10)) + 
-                     ' | Name: ' + FirstName + ' ' + LastName +
-                     ' | Title: ' + ISNULL(Title, 'NULL') +
-                     ' | Region: ' + ISNULL(Region, 'NULL') +
-                     ' | HireDate: ' + CONVERT(VARCHAR(20), HireDate, 120) +
-                     ' | ReportsTo: ' + ISNULL(CAST(ReportsTo AS VARCHAR(10)), 'NULL')
-    FROM inserted
-    
-    -- Insert audit log
+    -- FIXED: Handle multiple rows using INSERT...SELECT with JOIN
     INSERT INTO EmployeeAuditLog 
     (EmployeeID, Operation, OldData, NewData, ChangedBy, ChangeDate)
-    VALUES 
-    (@EmployeeID, 'UPDATE', @OldData, @NewData, SYSTEM_USER, GETDATE())
+    SELECT 
+        i.EmployeeID,
+        'UPDATE',
+        -- Old data from deleted table
+        'ID: ' + CAST(d.EmployeeID AS VARCHAR(10)) + 
+        ' | Name: ' + d.FirstName + ' ' + d.LastName +
+        ' | Title: ' + ISNULL(d.Title, 'NULL') +
+        ' | Region: ' + ISNULL(d.Region, 'NULL') +
+        ' | HireDate: ' + CONVERT(VARCHAR(20), d.HireDate, 120) +
+        ' | ReportsTo: ' + ISNULL(CAST(d.ReportsTo AS VARCHAR(10)), 'NULL'),
+        -- New data from inserted table
+        'ID: ' + CAST(i.EmployeeID AS VARCHAR(10)) + 
+        ' | Name: ' + i.FirstName + ' ' + i.LastName +
+        ' | Title: ' + ISNULL(i.Title, 'NULL') +
+        ' | Region: ' + ISNULL(i.Region, 'NULL') +
+        ' | HireDate: ' + CONVERT(VARCHAR(20), i.HireDate, 120) +
+        ' | ReportsTo: ' + ISNULL(CAST(i.ReportsTo AS VARCHAR(10)), 'NULL'),
+        SYSTEM_USER,
+        GETDATE()
+    FROM inserted i
+    INNER JOIN deleted d ON i.EmployeeID = d.EmployeeID
     
-    PRINT 'TRIGGER FIRED: Employee UPDATE - ID: ' + CAST(@EmployeeID AS VARCHAR(10))
-    PRINT 'Audit log entry created for UPDATE operation'
+    DECLARE @Count INT = (SELECT COUNT(*) FROM inserted)
+    PRINT 'TRIGGER FIRED: Employee UPDATE - ' + CAST(@Count AS VARCHAR(10)) + ' row(s) processed'
+    PRINT 'Audit log entries created for UPDATE operation'
 END
 GO
 
--- TRIGGER 3: Handle DELETE operations
+-- TRIGGER 3: Handle DELETE operations - FIXED for multiple rows
 CREATE OR ALTER TRIGGER TR_DEL_Employee 
 ON Employees
 AFTER DELETE
@@ -221,35 +217,36 @@ AS
 BEGIN
     SET NOCOUNT ON
     
-    DECLARE @EmployeeID INT,
-            @OldData NVARCHAR(MAX)
-    
-    SELECT @EmployeeID = EmployeeID FROM deleted
-    
-    -- Build old data string from deleted table
-    SELECT @OldData = 'ID: ' + CAST(EmployeeID AS VARCHAR(10)) + 
-                     ' | Name: ' + FirstName + ' ' + LastName +
-                     ' | Title: ' + ISNULL(Title, 'NULL') +
-                     ' | Region: ' + ISNULL(Region, 'NULL') +
-                     ' | HireDate: ' + CONVERT(VARCHAR(20), HireDate, 120) +
-                     ' | ReportsTo: ' + ISNULL(CAST(ReportsTo AS VARCHAR(10)), 'NULL')
-    FROM deleted
-    
-    -- Insert audit log
+    -- FIXED: Handle multiple rows using INSERT...SELECT
     INSERT INTO EmployeeAuditLog 
     (EmployeeID, Operation, OldData, NewData, ChangedBy, ChangeDate)
-    VALUES 
-    (@EmployeeID, 'DELETE', @OldData, NULL, SYSTEM_USER, GETDATE())
+    SELECT 
+        EmployeeID,
+        'DELETE',
+        'ID: ' + CAST(EmployeeID AS VARCHAR(10)) + 
+        ' | Name: ' + FirstName + ' ' + LastName +
+        ' | Title: ' + ISNULL(Title, 'NULL') +
+        ' | Region: ' + ISNULL(Region, 'NULL') +
+        ' | HireDate: ' + CONVERT(VARCHAR(20), HireDate, 120) +
+        ' | ReportsTo: ' + ISNULL(CAST(ReportsTo AS VARCHAR(10)), 'NULL'),
+        NULL,
+        SYSTEM_USER,
+        GETDATE()
+    FROM deleted
     
-    PRINT 'TRIGGER FIRED: Employee DELETE - ID: ' + CAST(@EmployeeID AS VARCHAR(10))
-    PRINT 'Audit log entry created for DELETE operation'
+    DECLARE @Count INT = (SELECT COUNT(*) FROM deleted)
+    PRINT 'TRIGGER FIRED: Employee DELETE - ' + CAST(@Count AS VARCHAR(10)) + ' row(s) processed'
+    PRINT 'Audit log entries created for DELETE operation'
 END
 GO
+
 
 -- =====================================================
 -- DEMO DATA INSERTION AND ERROR HANDLING TESTS
 -- =====================================================
 
+
+---- RUN ALL BELOLOW's CODE AT A TIME
 PRINT '========================================='
 PRINT 'DEMO DATA INSERTION AND ERROR HANDLING'
 PRINT '========================================='
@@ -259,23 +256,23 @@ PRINT '--- DEMO DATA 1: Creating Sales Representative ---'
 DECLARE @DemoEmp1ID INT
 
 EXEC CreateEmployeeInRegionTerritory 
-    @FirstName = 'John',
-    @LastName = 'Smith',
-    @Title = 'Sales Representative',
-    @TitleOfCourtesy = 'Mr.',
-    @BirthDate = '1985-03-20',
-    @HireDate = '2024-01-15',
-    @Address = '123 Pine Street',
-    @City = 'Seattle',
-    @Region = 'WA',
-    @PostalCode = '98101',
-    @Country = 'USA',
-    @HomePhone = '(206) 555-1234',
-    @Extension = '2101',
-    @Notes = 'Experienced sales professional with 5 years in retail',
-    @ReportsTo = 2,
-    @TerritoryID = '01581',
-    @NewEmployeeID = @DemoEmp1ID OUTPUT
+    @FirstName = 'John'
+    ,@LastName = 'Smith'
+    ,@Title = 'Sales Representative'
+    ,@TitleOfCourtesy = 'Mr.'
+    ,@BirthDate = '1985-03-20'
+    ,@HireDate = '2024-01-15'
+    ,@Address = '123 Pine Street'
+    ,@City = 'Seattle'
+    ,@Region = 'WA'
+    ,@PostalCode = '98101'
+    ,@Country = 'USA'
+    ,@HomePhone = '(206) 555-1234'
+    ,@Extension = '2101'
+    ,@Notes = 'Experienced sales professional with 5 years in retail'
+    ,@ReportsTo = 2
+    ,@TerritoryID = '01581'
+    ,@NewEmployeeID = @DemoEmp1ID OUTPUT
 
 IF @DemoEmp1ID IS NOT NULL
     PRINT '✓ SUCCESS: Demo Employee 1 created with ID = ' + CAST(@DemoEmp1ID AS VARCHAR(10))
@@ -289,23 +286,23 @@ PRINT '--- DEMO DATA 2: Creating Account Manager ---'
 DECLARE @DemoEmp2ID INT
 
 EXEC CreateEmployeeInRegionTerritory 
-    @FirstName = 'Sarah',
-    @LastName = 'Johnson',
-    @Title = 'Account Manager',
-    @TitleOfCourtesy = 'Ms.',
-    @BirthDate = '1988-07-12',
-    @HireDate = '2024-02-01',
-    @Address = '456 Oak Avenue',
-    @City = 'Redmond',
-    @Region = 'WA',
-    @PostalCode = '98052',
-    @Country = 'USA',
-    @HomePhone = '(425) 555-5678',
-    @Extension = '2205',
-    @Notes = 'MBA graduate specializing in client relationship management',
-    @ReportsTo = 5,
-    @TerritoryID = '02116',
-    @NewEmployeeID = @DemoEmp2ID OUTPUT
+    @FirstName = 'Sarah'
+    ,@LastName = 'Johnson'
+    ,@Title = 'Account Manager'
+    ,@TitleOfCourtesy = 'Ms.'
+    ,@BirthDate = '1988-07-12'
+    ,@HireDate = '2024-02-01'
+    ,@Address = '456 Oak Avenue'
+    ,@City = 'Redmond'
+    ,@Region = 'WA'
+    ,@PostalCode = '98052'
+    ,@Country = 'USA'
+    ,@HomePhone = '(425) 555-5678'
+    ,@Extension = '2205'
+    ,@Notes = 'MBA graduate specializing in client relationship management'
+    ,@ReportsTo = 5
+    ,@TerritoryID = '02116'
+    ,@NewEmployeeID = @DemoEmp2ID OUTPUT
 
 IF @DemoEmp2ID IS NOT NULL
     PRINT '✓ SUCCESS: Demo Employee 2 created with ID = ' + CAST(@DemoEmp2ID AS VARCHAR(10))
@@ -314,18 +311,18 @@ ELSE
 
 PRINT ''
 
--- ERROR HANDLING DEMO: Invalid Territory ID
+--DEMO 3: ERROR HANDLING DEMO: Invalid Territory ID
 PRINT '--- ERROR HANDLING DEMO: Invalid Territory ID ---'
 DECLARE @ErrorEmp1ID INT
 
 BEGIN TRY
     EXEC CreateEmployeeInRegionTerritory 
-        @FirstName = 'Michael',
-        @LastName = 'Brown',
-        @Title = 'Sales Associate',
-        @Region = 'CA',
-        @TerritoryID = 'INVALID99999',  -- This will cause an error
-        @NewEmployeeID = @ErrorEmp1ID OUTPUT
+        @FirstName = 'Michael'
+        ,@LastName = 'Brown'
+        ,@Title = 'Sales Associate'
+        ,@Region = 'CA'
+        ,@TerritoryID = 'INVALID99999' -- This will cause an error
+        ,@NewEmployeeID = @ErrorEmp1ID OUTPUT
         
     PRINT '✗ UNEXPECTED: This should not print - error should have occurred'
 END TRY
@@ -341,15 +338,15 @@ PRINT ''
 -- Show the successfully created employees
 PRINT '--- VIEWING CREATED DEMO EMPLOYEES ---'
 SELECT 
-    EmployeeID,
-    FirstName + ' ' + LastName AS FullName,
-    Title,
-    Region,
-    City,
-    HireDate,
-    ReportsTo
+    EmployeeID
+    ,FirstName + ' ' + LastName AS FullName
+    ,Title
+    ,Region
+    ,City
+    ,HireDate
+    ,ReportsTo
 FROM Employees 
-WHERE EmployeeID IN (@DemoEmp1ID, @DemoEmp2ID)
+WHERE EmployeeID IN (@DemoEmp1ID, @DemoEmp2ID)  -- FIXED: Added WHERE clause
 ORDER BY EmployeeID
 
 PRINT ''
@@ -468,6 +465,7 @@ ORDER BY TerritoryID
 PRINT ''
 
 -- Clean up demo data (Test DELETE trigger)
+/*
 PRINT 'Cleanup: Testing DELETE trigger with demo employees'
 IF @DemoEmp1ID IS NOT NULL
 BEGIN
@@ -486,18 +484,13 @@ BEGIN
     DELETE FROM Employees WHERE EmployeeID = @DemoEmp2ID
     PRINT '✓ Demo Employee 2 deleted (DELETE trigger should have fired)'
 END
+*/
 
 PRINT ''
 PRINT '========================================='
 PRINT 'DEMO EXECUTION COMPLETED!'
 PRINT '========================================='
-PRINT 'SUMMARY OF EXECUTED OPERATIONS:'
-PRINT '✓ 2 Demo employees successfully created'
-PRINT '✓ 3 Error handling scenarios tested'
-PRINT '✓ UPDATE triggers tested with data modifications'
-PRINT '✓ DELETE triggers tested with cleanup'
-PRINT '✓ All audit log entries created'
-PRINT ''
+
 PRINT 'STORED PROCEDURE EXECUTIONS:'
 PRINT '1. EXEC CreateEmployeeInRegionTerritory (Demo 1 - Success)'
 PRINT '2. EXEC CreateEmployeeInRegionTerritory (Demo 2 - Success)'
@@ -514,3 +507,5 @@ SELECT
 FROM EmployeeAuditLog 
 GROUP BY Operation
 ORDER BY Operation
+
+-- NOTE: For more clarification, please view the Messages tab in besides to the Results tab
